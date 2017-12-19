@@ -1,4 +1,6 @@
 """Lifetimes utils and helpers."""
+from __future__ import division
+
 from datetime import datetime
 
 import numpy as np
@@ -102,7 +104,7 @@ def calibration_and_holdout_data(transactions, customer_id_col, datetime_col, ca
 
 
 def _find_first_transactions(transactions, customer_id_col, datetime_col, monetary_value_col=None, datetime_format=None,
-                            observation_period_end=None, freq='D'):
+                             observation_period_end=None, freq='D'):
     """
     Return dataframe with first transactions.
 
@@ -171,7 +173,7 @@ def _find_first_transactions(transactions, customer_id_col, datetime_col, moneta
 
 
 def summary_data_from_transaction_data(transactions, customer_id_col, datetime_col, monetary_value_col=None, datetime_format=None,
-                                       observation_period_end=None, freq='D'):
+                                       observation_period_end=None, freq='D', div_coef=1):
     """
     Return summary data from transactions.
 
@@ -197,9 +199,12 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
     datetime_format: string, optional
         a string that represents the timestamp format. Useful if Pandas can't understand
         the provided format.
-    freq: string
+    freq: string, optional
         Default 'D' for days, 'W' for weeks, 'M' for months... etc. Full list here:
         http://pandas.pydata.org/pandas-docs/stable/timeseries.html#dateoffset-objects
+    div_coef: float, optional
+        Default 1, could be use to get exact recency and T when freq is not D
+        like in CDNOW dataset where in first row recency = 30.43 and T = 38.86
 
     Returns
     -------
@@ -227,8 +232,8 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
     # subtract 1 from count, as we ignore their first order.
     customers['frequency'] = customers['count'] - 1
 
-    customers['T'] = (observation_period_end - customers['min'])
-    customers['recency'] = (customers['max'] - customers['min'])
+    customers['T'] = (observation_period_end - customers['min']) / div_coef
+    customers['recency'] = (customers['max'] - customers['min']) / div_coef
 
     summary_columns = ['frequency', 'recency', 'T']
 
