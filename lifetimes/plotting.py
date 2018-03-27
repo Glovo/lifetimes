@@ -1,7 +1,18 @@
+import sys
 import numpy as np
 import pandas as pd
-from lifetimes.utils import calculate_alive_path, expected_cumulative_transactions
+import datetime as dt
 from scipy import stats
+
+from lifetimes.utils import calculate_alive_path, expected_cumulative_transactions
+
+PROJECTSPATH = os.environs['PROJECT_PATH']
+sys.path.insert(0, os.path.join(PROJECTSPATH,'ops-scripts')
+from utils.settings import settings
+
+glovo_green = settings['style']['colors']['glovo_green']
+glovo_yellow = settings['style']['colors']['glovo_yellow']
+glovo_gray = settings['style']['colors']['glovo_gray']
 
 __all__ = [
     'plot_period_transactions',
@@ -313,7 +324,7 @@ def plot_expected_repeat_purchases(model,
 
 
 def plot_history_alive(model, t, transactions, datetime_col, freq='D',
-                       start_date=None, ax=None, **kwargs):
+                       start_date=None, end_date=None, ax=None, **kwargs):
     """
     Draw a graph showing the probablility of being alive for a customer in time.
 
@@ -343,12 +354,12 @@ def plot_history_alive(model, t, transactions, datetime_col, freq='D',
     """
     from matplotlib import pyplot as plt
 
+    first_transaction_date = transactions[datetime_col].min()
     if start_date is None:
-        start_date = min(transactions[datetime_col])
-
+        start_date = dt.datetime.strptime(first_transaction_date,"%Y-%m-%d") - \
+                                          dt.timedelta(days=7)
     if ax is None:
         ax = plt.subplot(111)
-
     # Get purchasing history of user
     customer_history = transactions[[datetime_col]].copy()
     customer_history.index = pd.DatetimeIndex(customer_history[datetime_col])
@@ -357,21 +368,42 @@ def plot_history_alive(model, t, transactions, datetime_col, freq='D',
     customer_history['transactions'] = 1
     customer_history = customer_history.resample(freq).sum()
 
+    current_date = dt.datetime.strftime(dt.datetime.now(),"%Y-%m-%d")
+    refresh_date = dt.datetime.strftime(
+        dt.datetime.strptime(first_transaction_date,"%Y-%m-%d") + dt.timedelta(days=t),
+        "%Y-%m-%d")
+    periods_to_plot = (dt.datetime.strptime(end_date,"%Y-%m-%d") \
+                       - start_date
+                      ).days
+    if freq == 'W':
+        periods_to_plot = int(periods_to_plot/7.)
     # plot alive_path
-    path = calculate_alive_path(model, transactions, datetime_col, t, freq)
-    path_dates = pd.date_range(start=min(transactions[datetime_col]), periods=len(path), freq=freq)
-    plt.plot(path_dates, path, '-', label='P_alive')
+    path = pd.concat(
+        [pd.Series([None]*7),
+         calculate_alive_path(model, transactions, datetime_col, periods_to_plot, freq)*100.])
+    path_dates = pd.date_range(start=start_date, periods=len(path), freq=freq)
+    past_dates_path = path_dates[path_dates<=refresh_date]
+    past_path = path[path_dates<=refresh_date]
+    future_dates_path = path_dates[path_dates>=refresh_date]
+    future_path = path[path_dates>=refresh_date]
+    plt.plot(past_dates_path, past_path, color=glovo_gray, ls='-', label='P_alive')
+    plt.plot(future_dates_path, future_path, color=glovo_gray, ls='--')
 
     # plot buying dates
     payment_dates = customer_history[customer_history['transactions'] >= 1].index
-    plt.vlines(payment_dates.values, ymin=0, ymax=1, colors='r', linestyles='dashed', label='purchases')
-
-    plt.ylim(0, 1.0)
-    plt.yticks(np.arange(0, 1.1, 0.1))
+    plt.vlines(payment_dates.values, ymin=0, ymax=100,
+               colors=glovo_green, linestyles='dashed', label='Orders')
+    plt.vlines(refresh_date, ymin=0, ymax=100,
+               colors=glovo_yellow, linestyles='solid', label='Last refresh')
+    plt.vlines(current_date, ymin=0, ymax=100,
+               colors='red', linestyles='solid', label='Today')
+    plt.ylim(0, 105)
+    plt.yticks(np.arange(0, 110, 10))
+    plt.xticks(rotation=-20.)
     plt.xlim(start_date, path_dates[-1])
     plt.legend(loc=3)
-    plt.ylabel('P_alive')
-    plt.title('History of P_alive')
+    plt.ylabel('P_alive (%)')
+    plt.title('Evolution of survival probability')
 
     return ax
 
