@@ -9,9 +9,6 @@ import dill
 from scipy.optimize import minimize
 import datetime as dt
 
-PROJECT_PATH = os.environ['PROJECTSPATH']
-sys.path.insert(0, os.path.join(PROJECT_PATH,'ops-scripts'))
-from utils.settings import cx_cltv_data_dir
 pd.options.mode.chained_assignment = None
 
 __all__ = ['calibration_and_holdout_data',
@@ -186,7 +183,7 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
                                        monetary_value_col=None, datetime_format=None,
                                        observation_period_end=None, freq='D',
                                        money_first_transaction=False,
-                                       save=False):
+                                       save=False, output_dir=None):
     """
     Return summary data from transactions.
 
@@ -222,7 +219,6 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
         customer_id, frequency, recency, T [, monetary_value]
 
     """
-    t0 = dt.datetime.now()
     if observation_period_end is None:
         observation_period_end = transactions[datetime_col].max()
     observation_period_end = pd.to_datetime(observation_period_end, format=datetime_format).to_period(freq)
@@ -274,16 +270,12 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
                                                           ].mean(
                                                           ).fillna(0)
         summary_columns.append('margin')
-    t1 = dt.datetime.now()
-    print("Took {} seconds to summarize transaction data into RFM vector".format((t1-t0).seconds))
     if save:
         output_path = os.path.join(
-            cx_cltv_data_dir,
+            output_dir,
             'all_rfm_data_{}.csv'.format(observation_period_end))
         customers[feature_columns] = customers[feature_columns].astype(int)
         customers[summary_columns].to_csv(output_path,index=True)
-        t2 = dt.datetime.now()
-        print("Took {} seconds to save RFM data to disk".format((t2-t1).seconds))
     customers = customers[summary_columns].astype(float)
     return customers
 

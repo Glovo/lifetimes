@@ -1,4 +1,5 @@
 import sys
+import os
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -6,9 +7,9 @@ from scipy import stats
 
 from lifetimes.utils import calculate_alive_path, expected_cumulative_transactions
 
-PROJECTSPATH = os.environs['PROJECT_PATH']
-sys.path.insert(0, os.path.join(PROJECTSPATH,'ops-scripts')
-from utils.settings import settings
+PROJECTSPATH = os.environ['PROJECTSPATH']
+sys.path.insert(0, os.path.join(PROJECTSPATH,'ops-scripts'))
+from common.settings import settings
 
 glovo_green = settings['style']['colors']['glovo_green']
 glovo_yellow = settings['style']['colors']['glovo_yellow']
@@ -136,6 +137,87 @@ def plot_calibration_purchases_vs_holdout_purchases(model,
     return ax
 
 
+def plot_frequency_recency_population(summary_data,
+                                      max_frequency=None,
+                                      max_recency=None,
+                                      title=None,
+                                      xlabel="Customer's Historical Frequency",
+                                      ylabel="Customer's Recency",
+                                      ax=None,
+                                      **kwargs):
+    """
+    Plot distribution of customers in a recency frequecy matrix as heatmap.
+
+    Parameters
+    ----------
+    summary_data: RF dataframe
+        Dataframe containing recency-frequency feature vectors for all users.
+    max_frequency: int, optional
+        The maximum frequency to plot. Default is max observed frequency.
+    max_recency: int, optional
+        The maximum recency to plot. This also determines the age of the customer.
+        Default to max observed age.
+    title: str, optional
+        Figure title
+    xlabel: str, optional
+        Figure xlabel
+    ylabel: str, optional
+        Figure ylabel
+    kwargs
+        Passed into the matplotlib.imshow command.
+
+    Returns
+    -------
+    axes: matplotlib.AxesSubplot
+
+    """
+    from matplotlib import pyplot as plt
+
+    if max_frequency is None:
+        max_frequency = int(summary_data['frequency_cal'].max())
+
+    if max_recency is None:
+        max_recency = int(summary_data['T_cal'].max())
+
+    population_matrix = summary_data.groupby(['frequency_cal','recency_cal']
+                                   )['T_cal'].count(
+                                   ).reset_index(
+                                   ).rename(columns={'T_cal':'num_customers'})
+    population_matrix['num_customers'] = np.log10(population_matrix['num_customers'])
+    Z = pd.merge(pd.DataFrame(np.transpose([list(range(max_recency)), [1]*max_recency]),
+                              columns=['recency_cal','dummy']),
+                 pd.DataFrame(np.transpose([list(range(max_frequency)), [1]*max_frequency]),
+                              columns=['frequency_cal','dummy']),
+                 on='dummy')
+    Z.drop('dummy',1,inplace=True)
+    Z = pd.merge(Z, population_matrix, on=['recency_cal','frequency_cal'], how='left')
+    # Z.fillna(0,inplace=True)
+    # Z.loc[(Z['frequency_cal']==0)&(Z['recency_cal']==0),'num_customers'] = 0
+    interpolation = kwargs.pop('interpolation', 'none')
+
+    if ax is None:
+        ax = plt.subplot(111)
+    PCM = ax.imshow(Z.pivot(index='recency_cal',
+                            columns='frequency_cal',
+                            values='num_customers').values,
+                            interpolation=interpolation, **kwargs)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if title is None:
+        title = 'Number of Customers (log)\nby Frequency and Recency'
+    ax.set_title(title)
+
+    # turn matrix into square
+    forceAspect(ax)
+
+    # plot colorbar beside matrix
+    cb = plt.colorbar(PCM, ax=ax)
+    cb.set_ticklabels([str(round(np.power(10,x),1)) for x in cb.get_ticks()])
+    cb.set_label('Number of customers')
+
+    return ax
+
+
 def plot_frequency_recency_matrix(model,
                                   T=1,
                                   max_frequency=None,
@@ -143,11 +225,13 @@ def plot_frequency_recency_matrix(model,
                                   title=None,
                                   xlabel="Customer's Historical Frequency",
                                   ylabel="Customer's Recency",
+                                  ax=None,
                                   **kwargs):
     """
     Plot recency frequecy matrix as heatmap.
 
-    Plot a figure of expected transactions in T next units of time by a customer's frequency and recency.
+    Plot a figure of expected transactions in T next units of time
+    by a customer's frequency and recency.
 
     Parameters
     ----------
@@ -158,8 +242,8 @@ def plot_frequency_recency_matrix(model,
     max_frequency: int, optional
         The maximum frequency to plot. Default is max observed frequency.
     max_recency: int, optional
-        The maximum recency to plot. This also determines the age of the customer.
-        Default to max observed age.
+        The maximum recency to plot. This also determines the age of the
+        customer. Default to max observed age.
     title: str, optional
         Figure title
     xlabel: str, optional
@@ -185,11 +269,13 @@ def plot_frequency_recency_matrix(model,
     Z = np.zeros((max_recency + 1, max_frequency + 1))
     for i, recency in enumerate(np.arange(max_recency + 1)):
         for j, frequency in enumerate(np.arange(max_frequency + 1)):
-            Z[i, j] = model.conditional_expected_number_of_purchases_up_to_time(T, frequency, recency, max_recency)
+            Z[i, j] = model.conditional_expected_number_of_purchases_up_to_time(
+                T, frequency, recency, max_recency)
 
     interpolation = kwargs.pop('interpolation', 'none')
 
-    ax = plt.subplot(111)
+    if ax is None:
+        ax = plt.subplot(111)
     PCM = ax.imshow(Z, interpolation=interpolation, **kwargs)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -207,12 +293,263 @@ def plot_frequency_recency_matrix(model,
     return ax
 
 
+def plot_rfm_matrix(model,
+                    rfm_data,
+                    horizon=1,
+                    T=None,
+                    revenue_type='gross',
+                    max_frequency=None,
+                    max_recency=None,
+                    title=None,
+                    xlabel="Customer's Historical Frequency",
+                    ylabel="Customer's Recency",
+                    ax=None,
+                    log=True,
+                    **kwargs):
+    """
+    Plot recency frequecy matrix as heatmap, with color indicating RLTV
+    per customer.
+
+    Plot a figure of expected transactions in T next units of time
+    by a customer's frequency and recency.
+
+    Parameters
+    ----------
+    model: lifetimes model
+        A fitted lifetimes model.
+    horizon: float, optional
+        Next units of time to make predictions for
+    T: integer
+        age of the user
+    max_frequency: int, optional
+        The maximum frequency to plot. Default is max observed frequency.
+    max_recency: int, optional
+        The maximum recency to plot. This also determines the age of the
+        customer. Default to max observed age.
+    title: str, optional
+        Figure title
+    xlabel: str, optional
+        Figure xlabel
+    ylabel: str, optional
+        Figure ylabel
+    kwargs
+        Passed into the matplotlib.imshow command.
+
+    Returns
+    -------
+    axes: matplotlib.AxesSubplot
+
+    """
+    from matplotlib import pyplot as plt
+
+    if max_frequency is None:
+        max_frequency = int(model.data['frequency'].max())
+
+    if max_recency is None:
+        max_recency = int(model.data['T'].max())
+
+    mean_monetary_value = rfm_data.groupby(['frequency_cal','recency_cal']
+                                 )['monetary_value_cal'
+                                 ].mean(
+                                 ).reset_index()
+    mean_margin = rfm_data.groupby(['frequency_cal','recency_cal']
+                         )['margin_cal'
+                         ].mean(
+                         ).reset_index()
+    Z = np.zeros((max_recency + 1, max_frequency + 1))
+    if T is None:
+        T = max_recency
+    for i, recency in enumerate(np.arange(max_recency + 1)):
+        for j, frequency in enumerate(np.arange(max_frequency + 1)):
+            exp_purchases = model.conditional_expected_number_of_purchases_up_to_time(
+                horizon, frequency, recency, T)
+            money = mean_monetary_value[
+                        (mean_monetary_value['frequency_cal']==frequency)&
+                        (mean_monetary_value['recency_cal']==recency)
+                    ]['monetary_value_cal']
+            if not money.empty:
+                money = money.values[0]
+            else:
+                money = 0.
+            margin = mean_margin[
+                        (mean_margin['frequency_cal']==frequency)&
+                        (mean_margin['recency_cal']==recency)
+                    ]['margin_cal']
+            if not margin.empty:
+                margin = margin.values[0]
+            else:
+                margin = 0.
+            Z[i, j] = exp_purchases * money
+            if revenue_type == 'net':
+                Z[i, j] *= 0.01 * margin
+            if log:
+                if Z[i, j] > 0.01:
+                    Z[i, j] = np.log10(Z[i, j])
+                else:
+                    Z[i, j] = None
+            elif Z[i, j] <= 0.01:
+                Z[i, j] = None
+    interpolation = kwargs.pop('interpolation', 'none')
+    if ax is None:
+        ax = plt.subplot(111)
+    PCM = ax.imshow(Z, interpolation=interpolation, **kwargs)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if title is None:
+        revenue_type = revenue_type[0].upper()+revenue_type[1:].lower()
+        title = 'Expected {} Revenue for {} Unit{} of Time,'. \
+            format(revenue_type, horizon, "s"[horizon == 1:]) + '\nby Frequency and Recency of a Customer'
+    plt.title(title)
+
+    # turn matrix into square
+    forceAspect(ax)
+
+    # plot colorbar beside matrix
+    cb = plt.colorbar(PCM, ax=ax)
+    cb.set_ticklabels([str(round(np.power(10,x),1)) for x in cb.get_ticks()])
+    cb.set_label('Customer RLTV @ 3 months')
+    plt.show()
+    return ax, Z
+
+
+def plot_integral_rfm_matrix(model,
+                             rfm_data,
+                             horizon=1,
+                             revenue_type='gross',
+                             max_frequency=None,
+                             max_recency=None,
+                             title=None,
+                             xlabel="Customer's Historical Frequency",
+                             ylabel="Customer's Recency",
+                             ax=None,
+                             log=True,
+                             **kwargs):
+    """
+    Plot recency frequecy matrix as heatmap, for all ages according to
+    the distribution in our user base and color indicating total RLTV
+    at the provided horizon.
+
+    Plot a figure of expected transactions in T next units of time
+    by a customer's frequency and recency.
+
+    Parameters
+    ----------
+    model: lifetimes model
+        A fitted lifetimes model.
+    horizon: float, optional
+        Next units of time to make predictions for
+    T: integer
+        age of the user
+    max_frequency: int, optional
+        The maximum frequency to plot. Default is max observed frequency.
+    max_recency: int, optional
+        The maximum recency to plot. This also determines the age of the
+        customer. Default to max observed age.
+    title: str, optional
+        Figure title
+    xlabel: str, optional
+        Figure xlabel
+    ylabel: str, optional
+        Figure ylabel
+    kwargs
+        Passed into the matplotlib.imshow command.
+
+    Returns
+    -------
+    axes: matplotlib.AxesSubplot
+
+    """
+    from matplotlib import pyplot as plt
+
+    if max_frequency is None:
+        max_frequency = int(model.data['frequency'].max())
+
+    if max_recency is None:
+        max_recency = int(model.data['T'].max())
+
+    mean_monetary_value = rfm_data.groupby(['frequency_cal','recency_cal']
+                                 )['monetary_value_cal'
+                                 ].mean(
+                                 ).reset_index()
+    mean_margin = rfm_data.groupby(['frequency_cal','recency_cal']
+                         )['margin_cal'
+                         ].mean(
+                         ).reset_index()
+    age_count = rfm_data.reset_index(
+                       ).groupby(['frequency_cal','recency_cal','T_cal']
+                       )['id'
+                       ].count(
+                       ).reset_index()
+    N_total = age_count['id'].sum()
+    Z = np.zeros((max_recency + 1, max_frequency + 1))
+    for i, recency in enumerate(np.arange(max_recency + 1)):
+        for j, frequency in enumerate(np.arange(max_frequency + 1)):
+            exp_purchases = 0.
+            partial_age_count = age_count[
+                (age_count['frequency_cal']==frequency)&
+                (age_count['recency_cal']==recency)
+            ]
+            for T,N in partial_age_count[['T_cal','id']].values:
+                exp_purchases += N * model.conditional_expected_number_of_purchases_up_to_time(
+                    horizon, frequency, recency, T)
+            # exp_purchases /= (N_total+0.)
+            money = mean_monetary_value[
+                        (mean_monetary_value['frequency_cal']==frequency)&
+                        (mean_monetary_value['recency_cal']==recency)
+                    ]['monetary_value_cal']
+            if not money.empty:
+                money = money.values[0]
+            else:
+                money = 0.
+            margin = mean_margin[
+                        (mean_margin['frequency_cal']==frequency)&
+                        (mean_margin['recency_cal']==recency)
+                    ]['margin_cal']
+            if not margin.empty:
+                margin = margin.values[0]
+            else:
+                margin = 0.
+            Z[i, j] = exp_purchases * money
+            if revenue_type == 'net':
+                Z[i, j] *= 0.01 * margin
+            if log:
+                if Z[i, j] > 0.01:
+                    Z[i, j] = np.log10(Z[i, j])
+                else:
+                    Z[i, j] = None
+            elif Z[i, j] <= 0.01:
+                Z[i, j] = None
+    interpolation = kwargs.pop('interpolation', 'none')
+    if ax is None:
+        ax = plt.subplot(111)
+    PCM = ax.imshow(Z, interpolation=interpolation, **kwargs)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if title is None:
+        revenue_type = revenue_type[0].upper()+revenue_type[1:].lower()
+        title = 'Expected {} Revenue for {} Unit{} of Time,'. \
+            format(revenue_type, horizon, "s"[horizon == 1:]) + '\nby Frequency and Recency of a Customer'
+    plt.title(title)
+
+    # turn matrix into square
+    forceAspect(ax)
+
+    # plot colorbar beside matrix
+    cb = plt.colorbar(PCM, ax=ax)
+    print(cb.get_ticks())
+    cb.set_ticklabels([str(round(np.power(10,x),1)) for x in cb.get_ticks()])
+    print(cb.get_ticks())
+    cb.set_label('Total RLTV @ 3 months')
+
+    return ax, Z
+
 def plot_probability_alive_matrix(model,
                                   max_frequency=None,
                                   max_recency=None,
                                   title='Probability Customer is Alive,\nby Frequency and Recency of a Customer',
                                   xlabel="Customer's Historical Frequency",
                                   ylabel="Customer's Recency",
+                                  ax=None,
                                   **kwargs):
     """
     Plot probability alive matrix as heatmap.
@@ -229,8 +566,8 @@ def plot_probability_alive_matrix(model,
     max_frequency: int, optional
         The maximum frequency to plot. Default is max observed frequency.
     max_recency: int, optional
-        The maximum recency to plot. This also determines the age of the customer.
-        Default to max observed age.
+        The maximum recency to plot. This also determines the age of the
+        customer. Default to max observed age.
     title: str, optional
         Figure title
     xlabel: str, optional
@@ -251,7 +588,8 @@ def plot_probability_alive_matrix(model,
 
     interpolation = kwargs.pop('interpolation', 'none')
 
-    ax = plt.subplot(111)
+    if ax is None:
+        ax = plt.subplot(111)
     PCM = ax.imshow(z, interpolation=interpolation, **kwargs)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -261,8 +599,8 @@ def plot_probability_alive_matrix(model,
     forceAspect(ax)
 
     # plot colorbar beside matrix
-    plt.colorbar(PCM, ax=ax)
-
+    cb = plt.colorbar(PCM, ax=ax)
+    cb.set_label('Survival probability')
     return ax
 
 
@@ -304,10 +642,13 @@ def plot_expected_repeat_purchases(model,
 
     if plt.matplotlib.__version__ >= "1.5":
         color_cycle = ax._get_lines.prop_cycler
-        color = coalesce(kwargs.pop('c', None), kwargs.pop('color', None), next(color_cycle)['color'])
+        color = coalesce(kwargs.pop('c', None),
+                         kwargs.pop('color', None),
+                         next(color_cycle)['color'])
     else:
         color_cycle = ax._get_lines.color_cycle
-        color = coalesce(kwargs.pop('c', None), kwargs.pop('color', None), next(color_cycle))
+        color = coalesce(kwargs.pop('c', None),
+                         kwargs.pop('color', None), next(color_cycle))
 
     max_T = model.data['T'].max()
 
@@ -319,12 +660,14 @@ def plot_expected_repeat_purchases(model,
 
     plt.title(title)
     plt.xlabel(xlabel)
-    plt.legend(loc='lower right')
+    if label is not None:
+        plt.legend(loc='lower right')
     return ax
 
 
 def plot_history_alive(model, t, transactions, datetime_col, freq='D',
-                       start_date=None, end_date=None, ax=None, **kwargs):
+                       start_date=None, end_date=None, ax=None,
+                       title='Evolution of survival probability', **kwargs):
     """
     Draw a graph showing the probablility of being alive for a customer in time.
 
@@ -337,13 +680,16 @@ def plot_history_alive(model, t, transactions, datetime_col, freq='D',
     transactions: pandas DataFrame
         DataFrame containing the transactions history of the customer_id
     datetime_col: str
-        The column in the transactions that denotes the datetime the purchase was made
+        The column in the transactions that denotes the datetime the purchase
+        was made
     freq: str, optional
         Default 'D' for days. Other examples= 'W' for weekly
     start_date: datetime, optional
         Limit xaxis to start date
     ax: matplotlib.AxesSubplot, optional
         Using user axes
+    title: str, optional
+        Title of the plot.
     kwargs
         Passed into the matplotlib.pyplot.plot command.
 
@@ -403,7 +749,7 @@ def plot_history_alive(model, t, transactions, datetime_col, freq='D',
     plt.xlim(start_date, path_dates[-1])
     plt.legend(loc=3)
     plt.ylabel('P_alive (%)')
-    plt.title('Evolution of survival probability')
+    plt.title(title)
 
     return ax
 
@@ -553,10 +899,11 @@ def plot_incremental_transactions(model, transactions, datetime_col, customer_id
 
 
 def plot_transaction_rate_heterogeneity(model,
-                                        suptitle='Heterogeneity in Transaction Rate',
+                                        title='Heterogeneity in Transaction Rate',
                                         xlabel='Transaction Rate',
                                         ylabel='Density',
                                         suptitle_fontsize=14,
+                                        ax=None,
                                         **kwargs):
     """
     Plot the estimated gamma distribution of lambda (customers' propensities to purchase).
@@ -579,6 +926,7 @@ def plot_transaction_rate_heterogeneity(model,
     axes: matplotlib.AxesSubplot
 
     """
+    #TODO Include a text with the PDF with the fitted values
     from matplotlib import pyplot as plt
 
     r, alpha = model._unload_params('r', 'alpha')
@@ -589,24 +937,23 @@ def plot_transaction_rate_heterogeneity(model,
     lim = rv.ppf(0.99)
     x = np.linspace(0, lim, 100)
 
-    fig, ax = plt.subplots(1)
-    fig.suptitle('Heterogeneity in Transaction Rate',
-                 fontsize=suptitle_fontsize, fontweight='bold')
-
-    ax.set_title('mean: {:.3f}, var: {:.3f}'.format(rate_mean, rate_var))
+    if ax is None:
+        fig, ax = plt.subplots(1)
+    ax.set_title(title+'\nmean: {:.3f}, var: {:.3f}'.format(rate_mean, rate_var))
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
 
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.plot(x, rv.pdf(x), **kwargs)
     return ax
 
 
 def plot_dropout_rate_heterogeneity(model,
-                                    suptitle='Heterogeneity in Dropout Probability',
+                                    title='Heterogeneity in Dropout Probability',
                                     xlabel='Dropout Probability p',
                                     ylabel='Density',
                                     suptitle_fontsize=14,
+                                    ax=None,
                                     **kwargs):
     """
     Plot the estimated gamma distribution of p.
@@ -631,6 +978,7 @@ def plot_dropout_rate_heterogeneity(model,
     axes: matplotlib.AxesSubplot
 
     """
+    #TODO Include a text with the PDF with the fitted values
     from matplotlib import pyplot as plt
 
     a, b = model._unload_params('a', 'b')
@@ -641,14 +989,14 @@ def plot_dropout_rate_heterogeneity(model,
     lim = rv.ppf(0.99)
     x = np.linspace(0, lim, 100)
 
-    fig, ax = plt.subplots(1)
-    fig.suptitle(suptitle, fontsize=suptitle_fontsize, fontweight='bold')
+    if ax is None:
+        fig, ax = plt.subplots(1)
 
-    ax.set_title('mean: {:.3f}, var: {:.3f}'.format(beta_mean, beta_var))
+    ax.set_title(title+'\nmean: {:.3f}, var: {:.3f}'.format(beta_mean, beta_var))
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
 
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.plot(x, rv.pdf(x), **kwargs)
     return ax
 
