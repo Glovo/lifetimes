@@ -10,6 +10,8 @@ horizon_dict = {
     88:'3mo', 89:'3mo', 90:'3mo', 91:'3mo', 92:'3mo', 93:'3mo',
     179:'6mo', 180:'6mo', 181:'6mo', 182:'6mo', 183:'6mo', 184:'6mo', 185:'6mo',
     362:'12mo', 363:'12mo', 364:'12mo', 365:'12mo', 366:'12mo', 367:'12mo', 368:'12mo',
+    727:'24mo', 728:'24mo', 729:'24mo', 730:'24mo', 731:'24mo', 732:'24mo', 733:'24mo',
+
 }
 
 # Current LTV model was tested with a 91 days horizon, longer term predictions
