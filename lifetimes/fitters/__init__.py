@@ -1,7 +1,6 @@
 """Init for fitters."""
 import numpy as np
 from .base_fitter import BaseFitter
-from sklearn.base import BaseEstimator
 import logging
 
 horizon_dict = {
@@ -18,7 +17,7 @@ horizon_dict = {
 # are not tested so performance is unknown
 max_horizon = 91
 
-class CLTVModel(BaseEstimator):
+class CLTVModel(BaseFitter):
     """
     A sklearn wrapper for CLTV models from lifetimes package, so other sklearn
     tools can be directly applied.
