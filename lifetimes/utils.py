@@ -219,57 +219,64 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
         customer_id, frequency, recency, T [, monetary_value]
 
     """
-    if observation_period_end is None:
-        observation_period_end = transactions[datetime_col].max()
-    observation_period_end = pd.to_datetime(observation_period_end, format=datetime_format).to_period(freq)
-
-    # Count individual orders per customer, to be able to convert repetitions
-    # predicted by the model to a number of actual customer orders.
-    order_count = pd.DataFrame(transactions.groupby(customer_id_col
-                             )[datetime_col].count(
-                             )).rename(columns={datetime_col:'num_orders'})
-    # label all of the repeated transactions
-    repeated_transactions = _find_first_transactions(
-        transactions,
-        customer_id_col,
-        datetime_col,
-        monetary_value_col,
-        datetime_format,
-        observation_period_end,
-        freq
-    )
-    # count all orders by customer.
-    customers = repeated_transactions.groupby(customer_id_col, sort=False)[datetime_col].agg(['min', 'max', 'count'])
-    customers = customers.join(order_count)
-    customers['orders_per_period'] = (customers['num_orders'] + 0.) / (customers['count'] + 0.)
-    # subtract 1 from count, as we ignore their first order.
-    customers['frequency'] = customers['count'] - 1
-    customers['T'] = (observation_period_end - customers['min'])
-    customers['recency'] = (customers['max'] - customers['min'])
-
     feature_columns = ['frequency', 'recency', 'T']
     summary_columns = feature_columns + ['orders_per_period']
     if monetary_value_col:
-        # create an index of all the first purchases
-        first_purchases = repeated_transactions[repeated_transactions['first']].index
-        # by setting the monetary_value cells of all the first purchases to NaN,
-        # those values will be excluded from the mean value calculation
-        if not money_first_transaction:
-            # We can select not to ignore the revenue from the first purchase,
-            # and use it to have a LTV estimation for new customers (i.e. freq = 0)
-            # and a more precise LTV estimation for recurrent customers (freq > 0)
-            repeated_transactions.loc[first_purchases, monetary_value_col] = np.nan
-            repeated_transactions.loc[first_purchases, 'margin'] = np.nan
-        customers['monetary_value'] = repeated_transactions.groupby(customer_id_col
-                                                          )[monetary_value_col
-                                                          ].mean(
-                                                          ).fillna(0)
         summary_columns.append('monetary_value')
-        customers['margin'] = repeated_transactions.groupby(customer_id_col
-                                                          )['margin'
-                                                          ].mean(
-                                                          ).fillna(0)
         summary_columns.append('margin')
+    if not transactions.empty:
+        if observation_period_end is None:
+            observation_period_end = transactions[datetime_col].max()
+        observation_period_end = pd.to_datetime(observation_period_end, format=datetime_format).to_period(freq)
+
+        # Count individual orders per customer, to be able to convert repetitions
+        # predicted by the model to a number of actual customer orders.
+        order_count = pd.DataFrame(transactions.groupby(customer_id_col
+                                 )[datetime_col].count(
+                                 )).rename(columns={datetime_col:'num_orders'})
+        # label all of the repeated transactions
+        repeated_transactions = _find_first_transactions(
+            transactions,
+            customer_id_col,
+            datetime_col,
+            monetary_value_col,
+            datetime_format,
+            observation_period_end,
+            freq
+        )
+        # count all orders by customer.
+        customers = repeated_transactions.groupby(customer_id_col, sort=False
+                                        )[datetime_col
+                                        ].agg(['min', 'max', 'count'])
+        customers = customers.join(order_count)
+        customers['orders_per_period'] = (customers['num_orders'] + 0.) / (customers['count'] + 0.)
+        # subtract 1 from count, as we ignore their first order.
+        customers['frequency'] = customers['count'] - 1
+        customers['T'] = (observation_period_end - customers['min'])
+        customers['recency'] = (customers['max'] - customers['min'])
+
+        if monetary_value_col:
+            # create an index of all the first purchases
+            first_purchases = repeated_transactions[repeated_transactions['first']].index
+            # by setting the monetary_value cells of all the first purchases to NaN,
+            # those values will be excluded from the mean value calculation
+            if not money_first_transaction:
+                # We can select not to ignore the revenue from the first purchase,
+                # and use it to have a LTV estimation for new customers (i.e. freq = 0)
+                # and a more precise LTV estimation for recurrent customers (freq > 0)
+                repeated_transactions.loc[first_purchases, monetary_value_col] = np.nan
+                repeated_transactions.loc[first_purchases, 'margin'] = np.nan
+            customers['monetary_value'] = repeated_transactions.groupby(customer_id_col
+                                                              )[monetary_value_col
+                                                              ].mean(
+                                                              ).fillna(0)
+            customers['margin'] = repeated_transactions.groupby(customer_id_col
+                                                              )['margin'
+                                                              ].mean(
+                                                              ).fillna(0)
+    else:
+        customers = pd.DataFrame(columns=summary_columns)
+        customers.index.name = customer_id_col
     if save:
         output_path = os.path.join(
             output_dir,
