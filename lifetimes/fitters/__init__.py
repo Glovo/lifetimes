@@ -4,13 +4,13 @@ from .base_fitter import BaseFitter
 import logging
 
 horizon_dict = {
-    28:'1mo', 29:'1mo', 30:'1mo', 31:'1mo', 32:'1mo', 33:'1mo',
-    58:'2mo', 59:'2mo', 60:'2mo', 61:'2mo', 62:'2mo', 63:'2mo',
-    88:'3mo', 89:'3mo', 90:'3mo', 91:'3mo', 92:'3mo', 93:'3mo',
-    179:'6mo', 180:'6mo', 181:'6mo', 182:'6mo', 183:'6mo', 184:'6mo', 185:'6mo',
+    28:'1mo',   29:'1mo',   30:'1mo',   31:'1mo',   32:'1mo',   33:'1mo',
+    58:'2mo',   59:'2mo',   60:'2mo',   61:'2mo',   62:'2mo',   63:'2mo',
+    88:'3mo',   89:'3mo',   90:'3mo',   91:'3mo',   92:'3mo',   93:'3mo',
+    179:'6mo',  180:'6mo',  181:'6mo',  182:'6mo',  183:'6mo',  184:'6mo',  185:'6mo',
     362:'12mo', 363:'12mo', 364:'12mo', 365:'12mo', 366:'12mo', 367:'12mo', 368:'12mo',
+    545:'18mo', 546:'18mo', 547:'18mo', 548:'18mo', 549:'18mo', 550:'18mo', 551:'18mo',
     727:'24mo', 728:'24mo', 729:'24mo', 730:'24mo', 731:'24mo', 732:'24mo', 733:'24mo',
-
 }
 
 # Current LTV model was tested with a 91 days horizon, longer term predictions
