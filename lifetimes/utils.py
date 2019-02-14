@@ -252,8 +252,8 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
         customers['orders_per_period'] = (customers['num_orders'] + 0.) / (customers['count'] + 0.)
         # subtract 1 from count, as we ignore their first order.
         customers['frequency'] = customers['count'] - 1
-        customers['T'] = (observation_period_end - customers['min']) / np.timedelta64(1, 'D')
-        customers['recency'] = (customers['max'] - customers['min']) / np.timedelta64(1, 'D')
+        customers['T'] = (observation_period_end - customers['min'])
+        customers['recency'] = (customers['max'] - customers['min'])
 
         if monetary_value_col:
             # create an index of all the first purchases
