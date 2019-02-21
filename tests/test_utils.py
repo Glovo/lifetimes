@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -409,3 +411,28 @@ def test_expected_cumulative_transactions_dedups_inside_a_time_period(fitted_bg,
     by_week = utils.expected_cumulative_transactions(fitted_bg, example_transaction_data, 'date', 'id', 10, freq='W')
     by_day = utils.expected_cumulative_transactions(fitted_bg, example_transaction_data, 'date', 'id', 10, freq='D')
     assert (by_week['actual'] >= by_day['actual']).all()
+
+
+def test_summary_data_from_transaction_data():
+    transactions = pd.read_csv('lifetimes/datasets/glovo_example_transactions.csv')
+    actual = utils.summary_data_from_transaction_data(
+        transactions,
+        customer_id_col='customer_id',
+        datetime_col='date',
+        observation_period_end=datetime(2019, 2, 19).date(),
+        freq='D',
+        monetary_value_col='gtv_eur',
+        money_first_transaction=True,
+        save=False
+    )
+    expected_columns = ['customer_id', 'frequency','recency', 'T', 'orders_per_period', 'monetary_value', 'margin']
+    expected = pd.DataFrame([[213, 0., 0., 1435., 1.,  5.5 , 82.6446281 ],
+                             [240, 0., 0., 1429., 1., 28.99, 15.67938788],
+                             [272, 0., 0., 1431., 1., 11.9 , 38.19709702],
+                             [382, 0., 0., 1451., 1., 17.9 , 25.39360081],
+                             [438, 0., 0., 1433., 1., 25.67, 17.70726352],
+                             [501, 0., 0., 1434., 1., 50.  ,  9.09090909],
+                             [587, 0., 0., 1428., 1.,  5.5 , 82.6446281 ],
+                             [688, 0., 0., 1431., 1., 11.1 , 20.47502048],
+                             [885, 0., 0., 1434., 1.,  8.  , 56.81818182]], columns=expected_columns).set_index('customer_id')
+    assert_frame_equal(actual, expected)
