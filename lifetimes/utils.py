@@ -231,9 +231,7 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
 
         # Count individual orders per customer, to be able to convert repetitions
         # predicted by the model to a number of actual customer orders.
-        order_count = pd.DataFrame(transactions.groupby(customer_id_col
-                                 )[datetime_col].count(
-                                 )).rename(columns={datetime_col:'num_orders'})
+        order_count = pd.DataFrame(transactions.groupby(customer_id_col)[datetime_col].count()).rename(columns={datetime_col:'num_orders'})
         # label all of the repeated transactions
         repeated_transactions = _find_first_transactions(
             transactions,
@@ -245,9 +243,7 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
             freq
         )
         # count all orders by customer.
-        customers = repeated_transactions.groupby(customer_id_col, sort=False
-                                        )[datetime_col
-                                        ].agg(['min', 'max', 'count'])
+        customers = repeated_transactions.groupby(customer_id_col, sort=False)[datetime_col].agg(['min', 'max', 'count'])
         customers = customers.join(order_count)
         customers['orders_per_period'] = (customers['num_orders'] + 0.) / (customers['count'] + 0.)
         # subtract 1 from count, as we ignore their first order.
@@ -266,14 +262,8 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
                 # and a more precise LTV estimation for recurrent customers (freq > 0)
                 repeated_transactions.loc[first_purchases, monetary_value_col] = np.nan
                 repeated_transactions.loc[first_purchases, 'margin'] = np.nan
-            customers['monetary_value'] = repeated_transactions.groupby(customer_id_col
-                                                              )[monetary_value_col
-                                                              ].mean(
-                                                              ).fillna(0)
-            customers['margin'] = repeated_transactions.groupby(customer_id_col
-                                                              )['margin'
-                                                              ].mean(
-                                                              ).fillna(0)
+            customers['monetary_value'] = repeated_transactions.groupby(customer_id_col)[monetary_value_col].mean().fillna(0)
+            customers['margin'] = repeated_transactions.groupby(customer_id_col)['margin'].mean().fillna(0)
     else:
         customers = pd.DataFrame(columns=summary_columns)
         customers.index.name = customer_id_col
