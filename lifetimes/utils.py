@@ -251,6 +251,17 @@ def summary_data_from_transaction_data(transactions, customer_id_col, datetime_c
         customers['T'] = (observation_period_end - customers['min'])
         customers['recency'] = (customers['max'] - customers['min'])
 
+        if isinstance(customers['T'].iloc[0], int):
+            pass
+        elif isinstance(customers['T'].iloc[0], pd.tseries.offsets.Day):
+            # After the introduction of PeriodArray in Pandas 0.24.0,
+            # values in column `T` and `recency` need to be devided by
+            # a timedelte to be converted back to integer.
+            customers['T'] /= np.timedelta64(1, 'D')
+            customers['recency'] /= np.timedelta64(1, 'D')
+        else:
+            raise ValueError('%s is not a valid type for column `T`', customers['T'].dtype)
+
         if monetary_value_col:
             # create an index of all the first purchases
             first_purchases = repeated_transactions[repeated_transactions['first']].index
