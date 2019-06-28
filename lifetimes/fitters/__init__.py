@@ -15,7 +15,7 @@ horizon_dict = {
 
 # Current LTV model was tested with a 91 days horizon, longer term predictions
 # are not tested so performance is unknown
-max_horizon = 91
+max_horizon = 93
 
 class CLTVModel(BaseFitter):
     """

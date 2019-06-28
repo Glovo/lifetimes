@@ -7,13 +7,9 @@ from scipy import stats
 
 from lifetimes.utils import calculate_alive_path, expected_cumulative_transactions
 
-PROJECTSPATH = os.environ['PROJECTSPATH']
-sys.path.insert(0, os.path.join(PROJECTSPATH,'ops-scripts'))
-from common.settings import settings
-
-glovo_green = settings['style']['colors']['glovo_green']
-glovo_yellow = settings['style']['colors']['glovo_yellow']
-glovo_gray = settings['style']['colors']['glovo_gray']
+glovo_green = '#26A69A'
+glovo_yellow = '#FFD335'
+glovo_gray = '#666666'
 
 __all__ = [
     'plot_period_transactions',
