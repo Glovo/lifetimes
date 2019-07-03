@@ -18,6 +18,7 @@ horizon_dict = {
 # Current LTV model was tested with a 91 days horizon, longer term predictions
 # are not tested so performance is unknown
 max_horizon = 93
+logger = logging.getLogger('execution')
 
 class CLTVModel(BaseFitter):
     """
@@ -64,7 +65,20 @@ class CLTVModel(BaseFitter):
             ))
         return mae
 
-def add_predictions(rfm_data, model, horizon, testing=True, logger=None):
+def get_horizon_string(horizon, logger=logger):
+    if horizon not in horizon_dict:
+        raise ValueError("Horizon value not expected: {}".format(horizon))
+    horizon_str = horizon_dict[horizon]
+    if horizon > int(max_horizon*1.05):
+        logger.warning((
+            "You are estimating LTV in an untested horizon! ({})"
+            .format(horizon_dict[horizon])
+        ))
+        # Add flag to warn about using LTV values for longer periods than tested
+        horizon_str += '_UNTESTED'
+    return horizon_str
+
+def add_predictions(rfm_data, model, horizon, testing=True, logger=logger):
     """
         Given a RFM dataframe, a LTV model and an number of periods,
         attach the following metrics: frequency, orders, gross revenue,
@@ -79,20 +93,9 @@ def add_predictions(rfm_data, model, horizon, testing=True, logger=None):
         `margin_holdout` is also available, error in net revenue is also
         computed.
     """
-    if logger is None:
-        logger = logging.getLogger('execution')
     logger.info("Computing LTV prediction metrics for an horizon of {} days".format(horizon))
     rfm = rfm_data.copy()
-    if horizon not in horizon_dict:
-        raise ValueError("Horizon value not expected: {}".format(horizon))
-    horizon_str = horizon_dict[horizon]
-    if horizon > int(max_horizon*1.05):
-        logger.warning((
-            "You are estimating LTV in an untested horizon! ({})"
-            .format(horizon_dict[horizon])
-        ))
-        # Add flag to warn about using LTV values for longer periods than tested
-        horizon_str += '_UNTESTED'
+    horizon_str = get_horizon_string(horizon)
     money = False
     # Feature vectors, all users
     frequency_history = rfm['frequency_cal']
